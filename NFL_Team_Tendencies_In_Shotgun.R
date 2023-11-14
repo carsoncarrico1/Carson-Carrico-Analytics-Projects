@@ -1,0 +1,47 @@
+library(tidyverse)
+library(nflfastR)
+library(ggimage)
+library(gt)
+library(nflreadr)
+
+# Load the play-by-play data for 2023
+playbyplaydata <- load_pbp(2023)
+
+# Let's compare offenses in shotgun for running and passing
+# First up is passing in shotgun
+shotgun_pass <- playbyplaydata %>%
+  filter(season == 2023, shotgun == 1) %>%
+  group_by(posteam) %>%
+  summarize(shotgun_pass_count = sum(play_type == "pass"))
+
+# Next up is running in shotgun
+shotgun_run <- playbyplaydata %>%
+  filter(season == 2023, shotgun == 1) %>%
+  group_by(posteam) %>%
+  summarize(shotgun_run_count = sum(play_type == "run"))
+
+# Joining both play types together and adding the team logos
+
+shotgun_plays <- shotgun_pass %>%
+  left_join(shotgun_run, by = "posteam")
+
+# Open teams_colors_logos
+View(teams_colors_logos)
+
+shotgun_total <- shotgun_plays %>%
+  left_join(teams_colors_logos, by = c("posteam" = "team_abbr"))
+
+# Now we can make a plot with team logos
+shotgun_total %>%
+  ggplot(aes(x = shotgun_run_count, y = shotgun_pass_count)) +
+  geom_smooth(se = FALSE, color = "black", method = "lm") +
+  geom_image(aes(image = team_logo_espn), asp = 16/9, size = 0.05) +
+  theme_bw() +
+  labs(x = "Number of Run Plays",
+       y = "Number of Pass Plays",
+       title = "Team Tendencies in Shotgun",
+       caption = "By Carson Carrico") +
+  theme(plot.title = element_text(size = 18, face = "bold", hjust = 0.5))
+
+# Saving the plot
+ggsave('shotgun_tendencies.png', width = 14, height = 10, dpi = "retina")

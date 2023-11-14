@@ -1,0 +1,59 @@
+#Load necessary libraries
+library(tidyverse)
+library(nflfastR)
+library(ggimage)
+library(gt)
+library(nflreadr)
+library(ggrepel)
+
+# Load the play-by-play data for 2023
+pbp <- load_pbp(2023)
+
+# Calculate average EPA for "pass" plays
+# Only players who have 50+ passes
+qb_epa_pass <- pbp %>%
+  filter(play_type == "pass") %>%
+  group_by(passer_player_name) %>%
+  summarize(pass_count = n()) %>%
+  filter(pass_count >= 50) %>%
+  left_join(pbp, by = "passer_player_name") %>%
+  group_by(passer_player_name, posteam) %>%
+  summarize(mean_epa_pass = mean(epa, na.rm = TRUE)) %>%
+  arrange(desc(mean_epa_pass))
+
+#QB EPA when they scramble
+qb_epa_scramble <- pbp %>%
+  filter(qb_scramble == 1) %>%
+  group_by(rusher_player_name, posteam) %>%
+  summarize(mean_epa_scramble = mean(epa, na.rm = TRUE)) %>%
+  arrange(desc(mean_epa_scramble))
+
+#Combining EPA for passing + scrambling
+qb_epa_combined <- full_join(qb_epa_pass, qb_epa_scramble, by = c("passer_player_name" = "rusher_player_name")) %>%
+  filter(!is.na(mean_epa_pass)) %>%
+  group_by(passer_player_name) %>%
+  summarize(
+    mean_epa_pass = mean(mean_epa_pass, na.rm = TRUE),
+    mean_epa_scramble = mean(mean_epa_scramble, na.rm = TRUE)
+  ) %>%
+  left_join(pbp %>% select(passer_player_name, posteam), by = "passer_player_name") %>%
+  distinct() %>%
+  arrange(desc(mean_epa_pass))
+
+# Adding logos
+View(teams_colors_logos)
+epa_total <- qb_epa_combined %>%
+  left_join(teams_colors_logos, by = c("posteam" = "team_abbr"))
+
+# Plot
+epa_total %>%
+  ggplot(aes(x = mean_epa_scramble, y = mean_epa_pass)) +
+  geom_point(size = 1) +
+  geom_text_repel(aes(label = passer_player_name), size = 3, box.padding = 0.5) +
+  geom_image(aes(image = team_logo_espn), asp = 16/9, size = 0.03) +
+  theme_bw() +
+  labs(x = "EPA on Scrambles",
+       y = "EPA on Passes",
+       title = "QB EPA for Passing and Scrambling",
+       caption = "By Carson Carrico") +
+  theme(plot.title = element_text(size = 18, face = "bold", hjust = 0.5))
